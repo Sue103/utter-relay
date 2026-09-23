@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import argparse
-import base64
 import hashlib
 import json
 import os
@@ -22,15 +21,17 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
-MAX_TEXT_BYTES = 256 * 1024
-VERSION = "1.2.3"
-
-# Windowsでpowershell.exeをsubprocessで呼ぶと、親(--windowed exe)にコンソールが
-# 無くても子プロセス用のコンソール窓が一瞬表示されてしまう。DesktopAgentは0.6秒おきに
-# これを呼ぶため、CREATE_NO_WINDOWを付けないと窓がチカチカし続けることになる。
-_SUBPROCESS_KWARGS = {}
+# Windows専用: pywin32でクリップボードをプロセス内から直接読み書きする。
+# 以前はpowershell.exeをsubprocessで毎回起動していたが、DesktopAgentが0.6秒おきに
+# 呼ぶため、Windows機のCPUを継続的に食い続け、体感できるレベルの動作遅延
+# (ネットワークが悪いように見えるほどの重さ)を引き起こしていた。実測で確認済み。
 if platform.system() == "Windows":
-    _SUBPROCESS_KWARGS["creationflags"] = subprocess.CREATE_NO_WINDOW
+    import win32clipboard
+    import win32con
+
+MAX_TEXT_BYTES = 256 * 1024
+VERSION = "1.3.0"
+
 # Grace period (seconds) after a local clipboard change before we allow a remote
 # item to overwrite it. Without this, copying something locally can get immediately
 # clobbered by an older item still sitting on the relay.
@@ -220,32 +221,25 @@ class SystemClipboard:
         if self.system == "Darwin":
             result = subprocess.run(["pbpaste"], capture_output=True, check=False)
             return result.stdout.decode("utf-8", errors="replace")
-        # Windows PowerShell 5.1の標準出力は環境によってCP932やUTF-16になる。
-        # PowerShell内でUTF-8→Base64へ変換し、Pythonとの境界をASCIIだけにする。
-        script = (
-            "$text=[string](Get-Clipboard -Raw -Format Text); "
-            "[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($text))"
-        )
-        command = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script]
-        result = subprocess.run(command, capture_output=True, check=False, **_SUBPROCESS_KWARGS)
-        encoded = result.stdout.decode("ascii", errors="strict").strip()
-        if not encoded:
+        # Windows: プロセスを起動せず、win32clipboardでプロセス内から直接読む。
+        win32clipboard.OpenClipboard()
+        try:
+            if win32clipboard.IsClipboardFormatAvailable(win32con.CF_UNICODETEXT):
+                return win32clipboard.GetClipboardData(win32con.CF_UNICODETEXT) or ""
             return ""
-        return base64.b64decode(encoded, validate=True).decode("utf-8", errors="strict")
+        finally:
+            win32clipboard.CloseClipboard()
 
     def write(self, text: str):
         if self.system == "Darwin":
             subprocess.run(["pbcopy"], input=text.encode("utf-8"), check=True)
             return
-        # stdinの文字コード変換を通さず、ASCII安全なBase64でPowerShellへ渡す。
-        encoded = base64.b64encode(text.encode("utf-8")).decode("ascii")
-        script = (
-            f"$bytes=[Convert]::FromBase64String('{encoded}'); "
-            "$text=[Text.Encoding]::UTF8.GetString($bytes); "
-            "Set-Clipboard -Value $text"
-        )
-        command = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script]
-        subprocess.run(command, check=True, **_SUBPROCESS_KWARGS)
+        win32clipboard.OpenClipboard()
+        try:
+            win32clipboard.EmptyClipboard()
+            win32clipboard.SetClipboardData(win32con.CF_UNICODETEXT, text)
+        finally:
+            win32clipboard.CloseClipboard()
 
 
 class DesktopAgent:
