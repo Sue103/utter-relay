@@ -23,7 +23,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 MAX_TEXT_BYTES = 256 * 1024
-VERSION = "1.2.2"
+VERSION = "1.2.3"
+
+# Windowsでpowershell.exeをsubprocessで呼ぶと、親(--windowed exe)にコンソールが
+# 無くても子プロセス用のコンソール窓が一瞬表示されてしまう。DesktopAgentは0.6秒おきに
+# これを呼ぶため、CREATE_NO_WINDOWを付けないと窓がチカチカし続けることになる。
+_SUBPROCESS_KWARGS = {}
+if platform.system() == "Windows":
+    _SUBPROCESS_KWARGS["creationflags"] = subprocess.CREATE_NO_WINDOW
 # Grace period (seconds) after a local clipboard change before we allow a remote
 # item to overwrite it. Without this, copying something locally can get immediately
 # clobbered by an older item still sitting on the relay.
@@ -220,7 +227,7 @@ class SystemClipboard:
             "[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($text))"
         )
         command = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script]
-        result = subprocess.run(command, capture_output=True, check=False)
+        result = subprocess.run(command, capture_output=True, check=False, **_SUBPROCESS_KWARGS)
         encoded = result.stdout.decode("ascii", errors="strict").strip()
         if not encoded:
             return ""
@@ -238,7 +245,7 @@ class SystemClipboard:
             "Set-Clipboard -Value $text"
         )
         command = ["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", script]
-        subprocess.run(command, check=True)
+        subprocess.run(command, check=True, **_SUBPROCESS_KWARGS)
 
 
 class DesktopAgent:
