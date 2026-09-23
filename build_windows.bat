@@ -1,9 +1,9 @@
 @echo off
-REM VoiceQuickRelay.exe をビルドする(Windows実機で実行すること)。
-REM 事前に: pip install -r requirements-tray.txt
+REM Builds VoiceQuickRelay.exe. Run this on a real Windows machine.
+REM First: pip install -r requirements-tray.txt
 
 pyinstaller --onefile --windowed --name VoiceQuickRelay voicequick_tray.py
 
 echo.
-echo ==^> dist\VoiceQuickRelay.exe ができていれば成功です。
+echo ==^> Done. Check dist\VoiceQuickRelay.exe
 pause
