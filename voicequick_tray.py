@@ -14,10 +14,11 @@ import json
 import platform
 import threading
 from pathlib import Path
-from tkinter import Tk, Label, Entry, Button, StringVar, messagebox
+from tkinter import Tk, Toplevel, Label, Entry, Button, StringVar, messagebox
 
 import pystray
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageTk
+import qrcode
 
 import voicequick_clipboard as core
 
@@ -145,6 +146,20 @@ class TrayApp:
 
         Label(root, text="デバイスID").pack(anchor="w", padx=12, pady=(10, 0))
         Entry(root, textvariable=device_var, width=42).pack(padx=12)
+
+        def on_show_qr():
+            payload = json.dumps({"relayURL": relay_var.get().strip(), "token": token_var.get().strip()})
+            qr_img = qrcode.make(payload)
+            qr_window = Toplevel(root)
+            qr_window.title("QRコード")
+            qr_window.attributes("-topmost", True)
+            photo = ImageTk.PhotoImage(qr_img.resize((240, 240)))
+            label = Label(qr_window, image=photo, padx=12, pady=12)
+            label.image = photo  # ガベージコレクションで消えないよう参照を保持
+            label.pack()
+            Label(qr_window, text="Utterの設定 → 「QRコードで読み取る」でスキャンしてください", padx=12, pady=(0, 12)).pack()
+
+        Button(root, text="QRコードを表示", command=on_show_qr).pack(pady=(8, 0))
 
         def on_save():
             relay_url = relay_var.get().strip()

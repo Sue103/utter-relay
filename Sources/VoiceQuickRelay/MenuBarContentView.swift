@@ -6,6 +6,7 @@ struct MenuBarContentView: View {
     @State private var portText: String = ""
     @State private var tokenText: String = ""
     @State private var copiedFeedback = false
+    @State private var showQRCode = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -31,7 +32,7 @@ struct MenuBarContentView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 HStack {
-                    Text("http://\(controller.localIPAddress):\(controller.port)")
+                    Text("http://\(controller.localIPAddress):\(String(controller.port))")
                         .font(.system(.body, design: .monospaced))
                         .textSelection(.enabled)
                         .lineLimit(1)
@@ -42,6 +43,32 @@ struct MenuBarContentView: View {
                         Image(systemName: copiedFeedback ? "checkmark" : "doc.on.doc")
                     }
                     .buttonStyle(.plain)
+                }
+                Button {
+                    showQRCode.toggle()
+                } label: {
+                    Label(showQRCode ? "QRコードを隠す" : "QRコードで接続", systemImage: "qrcode")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.tint)
+
+                if showQRCode, let qrImage = QRCodeGenerator.generate(from: pairingPayload) {
+                    HStack {
+                        Spacer()
+                        Image(nsImage: qrImage)
+                            .interpolation(.none)
+                            .resizable()
+                            .frame(width: 160, height: 160)
+                            .padding(8)
+                            .background(Color.white)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        Spacer()
+                    }
+                    Text("Utterの設定 → 「QRコードで読み取る」でスキャンしてください")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .center)
                 }
             }
 
@@ -88,6 +115,20 @@ struct MenuBarContentView: View {
             portText = String(controller.port)
             tokenText = controller.token
         }
+    }
+
+    private struct PairingPayload: Encodable {
+        let relayURL: String
+        let token: String
+    }
+
+    private var pairingPayload: String {
+        let payload = PairingPayload(
+            relayURL: "http://\(controller.localIPAddress):\(controller.port)",
+            token: controller.token
+        )
+        guard let data = try? JSONEncoder().encode(payload) else { return "{}" }
+        return String(data: data, encoding: .utf8) ?? "{}"
     }
 
     private func applyPort() {
